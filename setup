@@ -1,0 +1,9 @@
+#!/bin/bash
+
+sudo apt-get update -y
+sudo apt-get install -y jq sd rg fd-find ranger
+wget https://github.com/mikefarah/yq/releases/download/v4.52.5/yq_linux_amd64 -O yq && chmod +x yq
+go install github.com/charmbracelet/glow/v2@latest || go install github.com/charmbracelet/glow@latest
+git clone https://github.com/HackTricks-wiki/hacktricks
+git clone https://github.com/GTFOBins/GTFOBins.github.io gtfobins
+git clone https://github.com/LOLBAS-Project/LOLBAS lolbas

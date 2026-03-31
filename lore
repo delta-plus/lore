@@ -1,0 +1,171 @@
+#!/bin/bash
+
+read -r -d '' usage << EOF
+    __    ____  ____  ______
+   / /   / __ \/ __ \/ ____/
+  / /   / / / / /_/ / __/   
+ / /___/ /_/ / _, _/ /___   
+/_____/\____/_/ |_/_____/   
+
+Locator of Recorded Exploits
+
+HackTricks: lore -t (-s) [page or word]
+GTFOBins:   lore -g (-f) [name or file]
+LOLBAS:     lore -l (-f) [name or file]
+EOF
+
+hacktricks=./hacktricks
+gtfobins=./gtfobins
+lolbas=./lolbas
+
+bold() {
+  text=$(</dev/stdin)
+  bld=$(tput bold)
+  nrm=$(tput sgr0)
+  
+  echo "${bld}$text${nrm}"
+}
+
+search_hacktricks() {
+  temp=$(mktemp)
+  temp_dir=$(mktemp -d)
+  
+  if [[ "$1" != '-k' ]]; then
+    for x in $(fdfind "$1" $hacktricks | rg md$); do
+      cp "$x" "$temp_dir"
+    done
+  else
+    for x in $(rg -li "$2" $hacktricks | rg md$); do
+      cp "$x" "$temp_dir"
+    done
+  fi
+  
+  if [[ -z $(ls -A "$temp_dir") ]]; then
+    rm "$temp"
+    rm -r "$temp_dir"
+    exit
+  fi
+  
+  ranger --choosefile="$temp" "$temp_dir"
+  choice=$(cat "$temp")
+  cat "$choice" | glow -p
+  
+  rm "$temp"
+  rm -r "$temp_dir"
+}
+
+search_gtfobins() {
+  if [[ -f "$gtfobins/_gtfobins/$1" ]]; then
+    mktbl "$1" -b
+
+    readcmd=$(cat "$gtfobins/_gtfobins/$1" | ./yq -o=json | sd 'file-read' 'read' | jq -r '.functions.read[].code' 2>/dev/null)
+    writecmd=$(cat "$gtfobins/_gtfobins/$1" | ./yq -o=json | sd 'file-write' 'write' | jq -r '.functions.write[].code' 2>/dev/null)
+    shellcmd=$(cat "$gtfobins/_gtfobins/$1" | ./yq -o=json | jq -r '.functions.shell[].code' 2>/dev/null)
+    result=''
+  
+    if [[ -n "$readcmd" ]]; then
+      result="$(echo Read: | bold)\n$readcmd\n\n"
+    fi
+  
+    if [[ -n "$writecmd" ]]; then
+      cmd="$(echo Write: | bold)\n$writecmd\n\n"
+      result="$result$cmd"
+    fi
+  
+    if [[ -n "$shellcmd" ]]; then
+      cmd="$(echo Shell: | bold)\n$shellcmd"
+      result="$result$cmd"
+    fi
+  
+    last=$(echo -e "$result" | tail -n 1)
+  
+    if [[ -z "$last" ]]; then
+      echo -e "$result" | head -n -2
+    else
+      echo -e "$result"
+    fi
+  fi
+}
+
+search_lolbas() {
+  search=$(fdfind "$1" $lolbas/yml | rg -i "/$1.yml$")
+
+  if [[ -n "$search" ]]; then
+    mktbl "$1" -b
+
+    cmds=$(echo "$search" | xargs ./yq -o=json | jq -r '.Commands[].Command' 2>/dev/null)
+    path=$(echo "$search" | xargs ./yq -o=json | jq -r '.Full_Path[].Path' 2>/dev/null | sd '\\' '/')
+    result=''
+  
+    if [[ -n "$cmds" ]]; then
+      result="$(echo Commands: | bold)\n$cmds\n\n"
+    fi
+  
+    if [[ -n "$path" ]]; then
+      path="$(echo Location: | bold)\n$path\n\n"
+      result="$result$path"
+    fi
+  
+    last=$(echo -e "$result" | tail -n 1)
+  
+    if [[ -z "$last" ]]; then
+      echo -e "$result" | head -n -2
+    else
+      echo -e "$result\n\n"
+    fi
+  fi
+}
+
+OPTIONS=$(getopt -o tgls:f:h --long help -- "$@" 2>/dev/null)
+
+ht=0
+gb=0
+lb=0
+keyword=''
+fileloc=''
+
+while getopts 'tgls:f:h' opt; do
+  case ${opt} in
+    t) ht=1 ;;
+    g) gb=1 ;;
+    l) lb=1 ;;
+    s) keyword="$OPTARG" ;;
+    f) fileloc="$OPTARG" ;;
+    h) echo "    $usage"; echo; exit 1 ;;
+  esac
+done 2>/dev/null
+
+shift $((OPTIND - 1))
+
+if [[ "$ht" -eq 1 ]]; then
+  if [[ -z "$keyword" ]]; then
+    search_hacktricks "$1"
+  else
+    search_hacktricks -k "$keyword"
+  fi
+elif [[ "$gb" -eq 1 ]]; then
+  if [[ -z "$fileloc" ]]; then
+    search_gtfobins "$1"
+  else
+    for x in $(cat "$fileloc"); do
+      search=$(search_gtfobins "$x")
+      if [[ -n "$search" ]]; then
+        echo "$search"
+        echo
+        echo
+      fi
+    done | head -n -2
+  fi
+elif [[ "$lb" -eq 1 ]]; then
+  if [[ -z "$fileloc" ]]; then
+    search_lolbas "$1"
+  else
+    for x in $(cat "$fileloc"); do
+      search_lolbas "$x"
+      echo
+      echo
+    done | head -n -2
+  fi
+else
+  echo "    $usage"; echo; exit 1
+fi
