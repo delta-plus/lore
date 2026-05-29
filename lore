@@ -26,17 +26,106 @@ bold() {
   echo "${bld}$text${nrm}"
 }
 
+mkbox() {
+read -r -d '' pytxt << EOF
+import sys
+
+def bold(text):
+  return f"\\033[1m{text}\\033[0m"
+
+def mkbox(val, style, line):
+  vlen = len(val)
+  cols = vlen + 2
+
+  if style == '-b':
+    val = bold(val)
+    h = '━'
+    v = '┃'
+    lt = '┣'
+    rt = '┫'
+    ut = '┳'
+    dt = '┻'
+    ct = '╋'
+    c1 = '┏'
+    c2 = '┓'
+    c3 = '┗'
+    c4 = '┛'
+  else:
+    h = '─'
+    v = '│'
+    lt = '├'
+    rt = '┤'
+    ut = '┬'
+    dt = '┴'
+    ct = '┼'
+    c1 = '┌'
+    c2 = '┐'
+    c3 = '└'
+    c4 = '┘'
+
+  sect = h * cols
+  if cols % 2 == 0:
+    line_s = h * int(cols / 2 - 1) + ut + h * int(cols / 2)
+  else:
+    line_s = h * int(cols / 2) + ut + h * int(cols / 2)
+
+  if line == 'n':
+    top = f"{c1}{sect}{c2}"
+    mid = f"\\n{v} {val} {v}"
+    bot = f"\\n{c3}{sect}{c4}"
+  elif line == 'e':
+    top = f"{c1}{sect}{c2}"
+    mid = f"\\n{v} {val} {v}"
+    bot = f"\\n{c3}{sect}{c4}"
+  elif line == 's':
+    top = f"{c1}{sect}{c2}"
+    mid = f"\\n{v} {val} {v}"
+    bot = f"\\n{c3}{line_s}{c4}"
+  elif line == 'w':
+    top = f"{c1}{sect}{c2}"
+    mid = f"\\n{v} {val} {v}"
+    bot = f"\\n{c3}{sect}{c4}"
+  else:
+    top = f"{c1}{sect}{c2}"
+    mid = f"\\n{v} {val} {v}"
+    bot = f"\\n{c3}{sect}{c4}"
+
+  return f"{top}{mid}{bot}"
+
+if sys.argv[1] == '-b':
+  print(mkbox(sys.argv[2], '-b', ''))
+elif sys.argv[1] == '-h':
+  print(mkbox(sys.argv[3], '', sys.argv[2]))
+else:
+  print(mkbox(sys.argv[1], '', ''))
+EOF
+
+  python3 -c "$pytxt" $@
+}
+
 search_hacktricks() {
+  cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" || exit
   temp=$(mktemp)
   temp_dir=$(mktemp -d)
   
   if [[ "$1" != '-k' ]]; then
-    for x in $(fdfind "$1" $hacktricks | rg md$); do
-      cp "$x" "$temp_dir"
+    for x in $(fdfind "$1" $hacktricks); do
+      if echo "$x" | rg -q '\.md$'; then
+        name=$(echo "$x" | sd '\.md$' '' | sd '.*/' '')
+        cp "$x" "$temp_dir/$name"
+      else
+        name=$(echo "$x" | sd '/$' '' | sd '.*/' '')
+        cp "$x/README.md" "$temp_dir/$name"
+      fi
     done
   else
     for x in $(rg -li "$2" $hacktricks | rg md$); do
-      cp "$x" "$temp_dir"
+      if echo "$x" | rg -q 'README\.md$'; then
+        name=$(echo "$x" | sd '/README\.md$' '' | sd '.*/' '')
+      else
+        name=$(echo "$x" | sd '\.md$' '' | sd '.*/' '')
+      fi
+      cp "$x" "$temp_dir/$name"
     done
   fi
   
@@ -55,8 +144,9 @@ search_hacktricks() {
 }
 
 search_gtfobins() {
+  cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" || exit
   if [[ -f "$gtfobins/_gtfobins/$1" ]]; then
-    mktbl "$1" -b
+    mkbox -b "$1"
 
     readcmd=$(cat "$gtfobins/_gtfobins/$1" | ./yq -o=json | sd 'file-read' 'read' | jq -r '.functions.read[].code' 2>/dev/null)
     writecmd=$(cat "$gtfobins/_gtfobins/$1" | ./yq -o=json | sd 'file-write' 'write' | jq -r '.functions.write[].code' 2>/dev/null)
@@ -64,54 +154,36 @@ search_gtfobins() {
     result=''
   
     if [[ -n "$readcmd" ]]; then
-      result="$(echo Read: | bold)\n$readcmd\n\n"
+      echo -e "$(echo Read: | bold)\n$readcmd\n"
     fi
   
     if [[ -n "$writecmd" ]]; then
-      cmd="$(echo Write: | bold)\n$writecmd\n\n"
-      result="$result$cmd"
+      echo -e "$(echo Write: | bold)\n$writecmd\n"
     fi
   
     if [[ -n "$shellcmd" ]]; then
-      cmd="$(echo Shell: | bold)\n$shellcmd"
-      result="$result$cmd"
-    fi
-  
-    last=$(echo -e "$result" | tail -n 1)
-  
-    if [[ -z "$last" ]]; then
-      echo -e "$result" | head -n -2
-    else
-      echo -e "$result"
+      echo -e "$(echo Shell: | bold)\n$shellcmd\n"
     fi
   fi
 }
 
 search_lolbas() {
+  cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" || exit
   search=$(fdfind "$1" $lolbas/yml | rg -i "/$1.yml$")
 
   if [[ -n "$search" ]]; then
-    mktbl "$1" -b
+    mkbox -b "$1"
 
-    cmds=$(echo "$search" | xargs ./yq -o=json | jq -r '.Commands[].Command' 2>/dev/null)
-    path=$(echo "$search" | xargs ./yq -o=json | jq -r '.Full_Path[].Path' 2>/dev/null | sd '\\' '/')
+    cmds=$(echo "$search" | xargs ./yq -o=json | jq -r '.Commands[].Command' 2>/dev/null | sd '\\' '\\\\')
+    path=$(echo "$search" | xargs ./yq -o=json | jq -r '.Full_Path[].Path' 2>/dev/null | sd '\\' '/' | sd '^C:' '')
     result=''
   
     if [[ -n "$cmds" ]]; then
-      result="$(echo Commands: | bold)\n$cmds\n\n"
+      echo -e "$(echo Commands: | bold)\n$cmds\n"
     fi
   
     if [[ -n "$path" ]]; then
-      path="$(echo Location: | bold)\n$path\n\n"
-      result="$result$path"
-    fi
-  
-    last=$(echo -e "$result" | tail -n 1)
-  
-    if [[ -z "$last" ]]; then
-      echo -e "$result" | head -n -2
-    else
-      echo -e "$result\n\n"
+      echo -e "$(echo Location: | bold)\n$path\n"
     fi
   fi
 }
@@ -145,26 +217,27 @@ if [[ "$ht" -eq 1 ]]; then
   fi
 elif [[ "$gb" -eq 1 ]]; then
   if [[ -z "$fileloc" ]]; then
-    search_gtfobins "$1"
+    search_gtfobins "$1"  | head -n -1
   else
     for x in $(cat "$fileloc"); do
       search=$(search_gtfobins "$x")
       if [[ -n "$search" ]]; then
         echo "$search"
         echo
-        echo
       fi
-    done | head -n -2
+    done | head -n -1
   fi
 elif [[ "$lb" -eq 1 ]]; then
   if [[ -z "$fileloc" ]]; then
-    search_lolbas "$1"
+    search_lolbas "$1" | head -n -1
   else
     for x in $(cat "$fileloc"); do
-      search_lolbas "$x"
-      echo
-      echo
-    done | head -n -2
+      search=$(search_lolbas "$x")
+      if [[ -n "$search" ]]; then
+        echo "$search"
+        echo
+      fi
+    done | head -n -1
   fi
 else
   echo "    $usage"; echo; exit 1
