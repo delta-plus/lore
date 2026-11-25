@@ -14,6 +14,7 @@ GTFOBins:   lore -g (-f) [name or file]
 LOLBAS:     lore -l (-f) [name or file]
 EOF
 
+cloud=./hacktricks-cloud
 hacktricks=./hacktricks
 gtfobins=./gtfobins
 lolbas=./lolbas
@@ -107,9 +108,13 @@ search_hacktricks() {
   cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" || exit
   temp=$(mktemp)
   temp_dir=$(mktemp -d)
+
+  if [[ "$htc" -eq 1 ]]; then
+    hacktricks="$cloud"
+  fi
   
   if [[ "$1" != '-k' ]]; then
-    for x in $(fdfind "$1" $hacktricks); do
+    for x in $(fdfind "$1" $hacktricks | rg -v '/pdfs/'); do
       if echo "$x" | rg -q '\.md$'; then
         name=$(echo "$x" | sd '\.md$' '' | sd '.*/' '')
         cp "$x" "$temp_dir/$name"
@@ -151,6 +156,7 @@ search_gtfobins() {
     readcmd=$(cat "$gtfobins/_gtfobins/$1" | ./yq -o=json | sd 'file-read' 'read' | jq -r '.functions.read[].code' 2>/dev/null)
     writecmd=$(cat "$gtfobins/_gtfobins/$1" | ./yq -o=json | sd 'file-write' 'write' | jq -r '.functions.write[].code' 2>/dev/null)
     shellcmd=$(cat "$gtfobins/_gtfobins/$1" | ./yq -o=json | jq -r '.functions.shell[].code' 2>/dev/null)
+    cmdcmd=$(cat "$gtfobins/_gtfobins/$1" | ./yq -o=json | jq -r '.functions.command[].code' 2>/dev/null)
     result=''
   
     if [[ -n "$readcmd" ]]; then
@@ -161,8 +167,16 @@ search_gtfobins() {
       echo -e "$(echo Write: | bold)\n$writecmd\n"
     fi
   
-    if [[ -n "$shellcmd" ]]; then
-      echo -e "$(echo Shell: | bold)\n$shellcmd\n"
+    if [[ -n "$shellcmd" || -n "$cmdcmd" ]]; then
+      echo "$(echo Exec: | bold)"
+
+      if [[ -n "$shellcmd" ]]; then
+        echo -e "$shellcmd\n"
+      fi
+
+      if [[ -n "$cmdcmd" ]]; then
+        echo -e "$cmdcmd\n"
+      fi
     fi
   fi
 }
@@ -188,7 +202,7 @@ search_lolbas() {
   fi
 }
 
-OPTIONS=$(getopt -o tgls:f:h --long help -- "$@" 2>/dev/null)
+OPTIONS=$(getopt -o tcgls:f:h --long help -- "$@" 2>/dev/null)
 
 ht=0
 gb=0
@@ -196,9 +210,10 @@ lb=0
 keyword=''
 fileloc=''
 
-while getopts 'tgls:f:h' opt; do
+while getopts 'tcgls:f:h' opt; do
   case ${opt} in
     t) ht=1 ;;
+    c) htc=1 ;;
     g) gb=1 ;;
     l) lb=1 ;;
     s) keyword="$OPTARG" ;;
@@ -217,10 +232,10 @@ if [[ "$ht" -eq 1 ]]; then
   fi
 elif [[ "$gb" -eq 1 ]]; then
   if [[ -z "$fileloc" ]]; then
-    search_gtfobins "$1"  | head -n -1
+    search_gtfobins "$1" | head -n -1
   else
     for x in $(cat "$fileloc"); do
-      search=$(search_gtfobins "$x")
+      search=$(search_gtfobins "$x" | head -n -1)
       if [[ -n "$search" ]]; then
         echo "$search"
         echo
